@@ -395,4 +395,26 @@ Project license **not finalized yet**. [`LICENSE`](LICENSE) currently selection 
 
 ---
 
+## Current flow
+
+```mermaid
+flowchart TD
+  S[Flutter Sign In] -->|Supabase Auth| SA[(Supabase Auth)]
+  SA -->|JWT| S
+  S -->|Bearer token| A[FastAPI]
+  U[Flutter New Brand Check] -->|POST brand/check| A
+  A --> V1{JWT verified? role from public.users}
+  V1 --> E[Deterministic engine + rules table]
+  V1 --> AI[AI verifier stub: abstains]
+  V1 --> DB[(Supabase Postgres)]
+  DB --> CV[content + immutable version]
+  DB --> R[check run]
+  DB --> P[processing receipt]
+  DB --> AU[audit log]
+  R --> Q[Flutter Review Queue: GET reviews]
+  Q -->|PATCH decision| A
+  DB --> AP[Approval verify: hash + brand + rules version]
+  A --> F[Findings & Evidence UI]
+```
+
 **BrandGuard — clear checks, traceable evidence, accountable human decisions.**
