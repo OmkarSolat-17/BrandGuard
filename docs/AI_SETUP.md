@@ -1,87 +1,68 @@
-# AI setup and researched default
+# BrandGuard AI — configured OpenRouter path, wallet funding pending
 
-## Decision made for this project
+## Current hosted state
 
-Default configured model: **OpenAI `gpt-5.4-mini`**, changeable through `AI_MODEL`.
-It is a documented model with Chat Completions and structured-output support:
-https://developers.openai.com/api/docs/models/gpt-5.4-mini . The older `gpt-4.1-mini`
-and `gpt-5-mini` pages were also checked; they displayed deprecation labels, so
-neither was kept as this upgrade's default.
+- Provider path: Antideploy's OpenRouter integration, one existing application key.
+- Base URL: `https://openrouter.ai/api/v1`.
+- Selected model: `openai/gpt-5.4-mini`. Its public catalog entry advertises structured
+  outputs; catalog presence is not a funded request or measured quality proof.
+- **Wallet ₹0; deployed `AI_PROVIDER=disabled`. No live paid inference was run.**
+- Rules, human review, drafts, files and receipts work without AI. Disabled AI returns
+  explicit abstention, never a fictional factual pass.
 
-The integration uses the documented strict JSON-schema response format, but still
-validates source IDs, quotations, exact claim spans and status consistency on the
-server. Schema compliance does not establish truth or remove the need for review.
-Reference: https://developers.openai.com/api/docs/guides/structured-outputs .
+Owner funding: https://antideploy.com/settings/billing#add-money .
+**15% fee: ₹100 wallet credit costs ₹115.** Agents cannot add money and no payment
+was made. Do not create another AI key or ask the user to paste one into chat.
 
-**No provider account/key was available. Real model quality, latency, availability,
-billing and a live request have NOT been verified.** Contract tests use mocks.
-This is a selected configurable default, not a claim of measured model superiority.
+## After the owner funds the wallet
 
-## Activation — trusted backend environment only
+On the SAME application's server-only variables:
 
 ```dotenv
-AI_PROVIDER=openai
-AI_API_KEY=YOUR_OWN_SERVER_ONLY_PROVIDER_KEY
-AI_BASE_URL=https://api.openai.com/v1
-AI_MODEL=gpt-5.4-mini
+AI_PROVIDER=openrouter
+AI_BASE_URL=https://openrouter.ai/api/v1
+AI_MODEL=openai/gpt-5.4-mini
 ```
 
-Restart backend after changing environment. Set account spending/rate limits before
-using real content. Do not put these secrets in Flutter `--dart-define`, source,
-commits, screenshots, ZIPs or chat. Supabase authentication/database access does not
-supply an AI provider key or billing account.
+`OPENROUTER_API_KEY` is already injected by the platform. Do not copy it into source,
+Flutter, command-line arguments, screenshots, documentation or a duplicate host
+variable. Redeploy the existing app after changing environment so the process uses
+it. Verify wallet/provider access, cost limits and real quality before claiming done.
+The existing direct-OpenAI adapter remains compatible for a separately authorized
+configuration, but it is not the selected hosting path and requires no new choice now.
 
-## Actual retrieval and comparison flow
+## Grounded-output contract
 
-1. Reviewer adds manual source text or uploads TXT/MD/text PDF in **Fact Sources**.
-2. Uploaded text starts **unverified**. Reviewer inspects it and checks verification.
-3. On each check, API filters enabled, reviewer-verified facts for the selected brand.
-4. It splits source text into overlapping 3,000-character passages with a 2,700
-   character stride, ranks lexical word overlap and retrieves at most five passages.
-   Retrieval covers later document sections too; there is no embedding/vector service.
-5. Only if provider opt-in/key and relevant evidence exist, API submits the exact
-   content (up to 12,000 characters) plus retrieved passages to the model.
-6. Strict response schema requires supported/needs_review/abstained, findings and
-   source quotations. Server rejects unknown passage IDs, fabricated quotes, claim
-   strings not in submitted content, inconsistent verdicts, refusals and incomplete output.
-7. Findings/receipts preserve cited fact IDs, exact source quotes, passage positions
-   and SHA-256 of the source text. Creator sees evidence and human reviewer decides.
+1. A reviewer adds/manual-enters or uploads source text, then explicitly verifies it.
+2. API selects enabled verified facts for the submitted brand. It splits text into
+   overlapping 3,000-character passages (2,700-character stride), ranks lexical overlap
+   and retrieves at most five passages. This is not embeddings/vector retrieval.
+3. Relevant verified evidence, opted-in provider and a key are all required. The
+   exact submission is limited to 12,000 characters for AI comparison.
+4. Provider uses strict JSON schema, `store:false`, a 3,000 completion-token cap and
+   25-second timeout. OpenRouter routing requires supported parameters and requests
+   `data_collection:deny`; GPT-5-family routing uses low/excluded reasoning output.
+5. Independently of model schema compliance, server verifies passage IDs, verbatim
+   source quotations, content spans, source hashes, result/status consistency and
+   completion/refusal state. Invalid/unsupported output abstains.
+6. Human review still decides publication. A quote/hash proves provenance of the
+   compared text, not its truth, recency, completeness or semantic contradiction.
 
-`status=supported` is a **model assessment against retrieved evidence**, not a proof
-that every possible claim is correct. Lexical retrieval can miss relevant facts;
-source trust/recency and semantic judgments still require people. Shared fact edits
-are audited, but do not have the same automatic approval-invalidation contract as
-versioned regex-rule edits. A stored source hash records what was compared.
+No evidence, disabled/missing access, provider credit denial/failure/timeout/refusal,
+malformed output or fabricated citations → **abstained**. Deterministic checks still run.
+There is no claim of automatic publication approval or universally complete fact coverage.
 
-## Explicit abstention
+## Live acceptance still required
 
-No relevant verified evidence, disabled provider, missing key, oversized AI input,
-provider timeout/failure/refusal, invalid citations or malformed output → **abstained**.
-Deterministic checks still run. Zero deterministic findings plus AI abstention must
-never be presented as factual verification or automatic approval.
+After funding/activation, test a known matching statement, a contradiction and an
+unrelated/unsupported claim against reviewer-verified sources. Inspect actual quotes,
+findings, costs, empty-evidence behavior and provider-failure fallback. Mocked contract
+tests, model catalog metadata and a provisioned key do not replace this live test.
 
-## Privacy, cost and deployment boundaries
+Enabling AI sends the submitted text and retrieved passages to an external provider.
+Request privacy flags are not legal zero-retention/data-residency guarantees. Check
+provider terms and organizational permissions before confidential/customer content.
+No crawler, independent source verification, OCR, spend UI or inference queue is added.
 
-- AI is disabled by default; enabling it is an explicit decision to send submitted
-  text and selected source passages to your configured external provider.
-- Request asks for `store: false`; that is **not** a promise of zero provider logs,
-  zero retention or a specific legal/data-residency arrangement. Review provider
-  terms and your organization's policy before using confidential/customer content.
-- Calls have a 25-second timeout and 3,000 output-token cap. There is no background
-  queue, batch processing, caching or spend dashboard in this source.
-- Workflow database writes are currently serialized, including scan processing;
-  use a job queue/optimistic finalization design before high-volume deployment.
-- No web search, URL crawling, independent source authentication or scanned-image
-  OCR is silently substituted. URLs entered in the library are source metadata.
-
-## Live acceptance checklist
-
-After securely configuring your own key and project:
-1. Add and verify an authoritative source containing a known statement/number.
-2. Check matching text, contradictory text and unrelated/unsupported claims.
-3. Confirm real output includes exact source quotations and reasonable assessments.
-4. Remove/disable evidence and key separately: both must abstain, not pass.
-5. Simulate provider timeout/refusal: deterministic scan must remain available.
-6. Check provider usage/costs, privacy settings and human-review behavior.
-
-Do not label the AI feature live-complete until those checks pass with real access.
+See [DEPLOYMENT.md](../DEPLOYMENT.md) and the current `validation/RESULTS.md` for the
+separate already-completed hosting, email and non-AI workflow checks.

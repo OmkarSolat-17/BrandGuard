@@ -1,160 +1,93 @@
-# Supabase — activated project and deployment handoff
+# BrandGuard Supabase — maintain the existing hosted setup
 
-**BrandGuard's live integration is now verified.** See
-[LIVE_SUPABASE_STATUS.md](LIVE_SUPABASE_STATUS.md) for the exact checks and remaining
-hosting/email/AI limits. The existing LiFE Mitra Gujarat project was not modified.
+**Current app:** https://brandguard-app.antideploy.app . Hosting and real auth-email
+callbacks are already deployed/tested; do not redo project creation or choose another
+provider. See [LIVE_SUPABASE_STATUS.md](LIVE_SUPABASE_STATUS.md) and
+[DEPLOYMENT.md](../DEPLOYMENT.md). Earlier standalone/local-demo ZIPs stay unchanged.
 
-## Existing project — do not create another one
+## Existing infrastructure
 
-- Ref: `jtidayzktuzpjydshsva`
-- API: `https://jtidayzktuzpjydshsva.supabase.co`
-- Dashboard: https://supabase.com/dashboard/project/jtidayzktuzpjydshsva
-- Session pooler: `aws-1-ap-south-1.pooler.supabase.com:5432`
-- Database: `postgres`; username: `postgres.jtidayzktuzpjydshsva`
-- Core/storage migrations already applied and read back. No reapplication is needed
-  for this project. Supplied SQL files document provisioning for a separate new environment.
+- Project: `jtidayzktuzpjydshsva`, BrandGuard, Mumbai `ap-south-1`.
+- API: `https://jtidayzktuzpjydshsva.supabase.co`.
+- Dashboard: https://supabase.com/dashboard/project/jtidayzktuzpjydshsva .
+- Pooler: `aws-1-ap-south-1.pooler.supabase.com:5432`, database `postgres`,
+  login `postgres.jtidayzktuzpjydshsva`.
+- Core, private Storage and temporary-evaluation-expiry migrations are already applied.
+  SQL files document provisioning for another explicitly authorized environment only.
+- LiFE Mitra Gujarat remains untouched. Do not recreate/replace its or this project's data.
 
-## 1. Private backend environment
+## Backend secret boundary
 
-The workspace backend has its completed `.env`, mode 0600. It is intentionally
-excluded from releases, together with database passwords and setup keys.
-Copy it separately only to your trusted API server, or configure equivalent secrets
-in the host's secret manager. **Do not put them in mobile or paste them into chat.**
-The project URL/publishable key alone are not a database connection or a deployed API.
+Normal production variables include `AUTH_PROVIDER=supabase`, `SEED_DEMO_USERS=false`,
+project URL/publishable key, private `DATABASE_URL`, bucket name and auth callback
+configuration. They are encrypted host variables; a private local `.env` is 0600 and
+not source-uploaded. **No normal runtime Supabase service/admin key is needed.**
 
-For a new trusted environment, use `backend/.env.example` and these settings:
+The database URL uses `sslmode=verify-full` plus the bundled PUBLIC CA
+`certs/supabase-prod-ca-2021.crt`. `serve.py` sets `backend/` as working directory.
+For another environment, use a valid server-local absolute CA path if necessary;
+never disable certificate/hostname validation to fix a relative-path mistake.
+Database credentials and real signing/provider secrets must never be placed in
+Flutter, Git, source archives, screenshots or chat.
 
-```dotenv
-AUTH_PROVIDER=supabase
-SEED_DEMO_USERS=false
-SUPABASE_URL=https://jtidayzktuzpjydshsva.supabase.co
-SUPABASE_PUBLISHABLE_KEY=YOUR_PROJECT_PUBLISHABLE_KEY
-DATABASE_URL=postgresql+psycopg://postgres.jtidayzktuzpjydshsva:URL_ENCODED_DB_PASSWORD@aws-1-ap-south-1.pooler.supabase.com:5432/postgres?sslmode=verify-full&sslrootcert=certs/supabase-prod-ca-2021.crt&connect_timeout=10
-SUPABASE_STORAGE_BUCKET=brandguard-files
-AI_PROVIDER=disabled
-```
+The production entrypoint refuses local/demo Auth and never seeds/replaces users.
+Use the earlier ready-demo ZIP for an intentionally isolated local SQLite demo,
+not public seeded accounts on this live host.
 
-Percent-encode special password characters. Use the included PUBLIC CA file; see
-`backend/certs/README.md` for provenance/fingerprints. The relative path above works
-when launched from `backend/` or through the root launcher. For another working
-directory/container, set an absolute **server-local** certificate path. Do not downgrade
-to `sslmode=require` or disable certificate checks to work around trust problems.
-
-Normal runtime needs **no service/admin key**. The database role is a trusted
-backend credential; per-user application authorization is enforced in FastAPI.
-Backend domain tables are intentionally unavailable to mobile/PostgREST users.
-
-## 2. Run backend and mobile
-
-```sh
-# Extract the ZIP; restore the private backend/.env securely, then:
-python start_backend.py
-```
-
-Or, with pinned dependencies installed:
-
-```sh
-cd backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
-```
-
-Check `/health`. Sign in with a real cloud account, then inspect `/api/v1/system/status`:
-`auth_provider=supabase`, `database=postgresql`, `storage=supabase`.
-The cloud project has **no public demo credentials**. Local demo logins only apply
-when using the default local SQLite mode, not this live cloud configuration.
+## Native Flutter
 
 ```sh
 cd mobile
 flutter pub get --enforce-lockfile
-flutter run --dart-define=API_BASE=https://YOUR_PERMANENT_API_DOMAIN
+flutter run
 ```
 
-For a phone on the same Wi-Fi during development, use the computer's reachable LAN
-IP and development port instead. A phone's localhost is not the computer. For web,
-prefer a same-origin API reverse proxy, or configure the explicit frontend origin in
-`CORS_ORIGINS`. The workspace live preview is temporary, not permanent hosting.
+Native defaults to the existing hosted HTTPS API; no dart-define is required.
+Web uses its own origin. Only explicit local development should pass a different
+API_BASE; a phone must never rely on the computer/emulator localhost. `mobile/` is the only Flutter root. Native
+release/device/signing certification is separate from this hosted web/API deployment.
 
-## 3. Roles and private storage
+## Trusted roles and private documents
 
-Public signup always results in a Creator; client-editable `user_metadata` is not
-trusted for role assignment. Confirmation remains required. Reviewers/admins are
-assigned only through trusted dashboard/Admin API **app_metadata**:
+Public signup → confirmed Creator. Never trust `user_metadata` or a dropdown to
+assign Reviewer/Admin. A trusted administrator may update only the intended user's
+`app_metadata` to include `{"brandguard_role":"reviewer"}` (or an authorized admin
+role), preserving its other fields. Supabase's `role=authenticated` is different.
+A permanent owner/reviewer identity was not silently created by the deploy.
 
-```json
-{"brandguard_role":"reviewer"}
-```
+A trusted, private admin environment can use `manage.py create-user`; its temporary
+admin credential must not enter the running app. The command prompts for a password
+and creates an admin-confirmed identity, so it is not evidence of email delivery.
+A reviewer should log in once so notification recipients are known to the app.
 
-Allowed application roles: creator, reviewer, admin. Supabase's own `role=authenticated`
-is a different field. Do not create publicly shared cloud demo accounts.
+`brandguard-files` is private with 5 MB TXT/Markdown/PDF limits. User bearer tokens,
+not a runtime service key, authorize actual object operations. Owner-folder uploads
+and owner/trusted-reviewer reads are enforced; anonymous/other-creator access is denied.
 
-One-time trusted administration, if needed:
+Two intended evaluation users and their sample remain until the unchanged app/Storage
+expiry **17 November 2026, 01:30:31 IST**. Ordinary users without the trusted expiry
+flag are unaffected. Do not indiscriminately clean/recreate intended users or files.
 
-```sh
-cd backend
-python manage.py create-user --email reviewer@YOUR_DOMAIN --name Reviewer --role reviewer
-```
+## Auth email already configured
 
-This command additionally needs a temporary server-only `SUPABASE_SECRET_KEY` or
-`SUPABASE_SERVICE_ROLE_KEY`. It prompts for a password, creates an email-confirmed
-account, and sets trusted metadata. Remove the admin key from normal runtime afterwards.
-Dashboard-created reviewers should log in once so notification recipients are known.
+- Site URL: `https://brandguard-app.antideploy.app`.
+- Exact allowlisted callbacks: `/auth/confirm` and `/auth/reset`, with the prior root URLs retained.
+- Send Email Hook: `/api/v1/auth/hooks/email`, protected by Standard Webhooks HMAC/timestamp validation.
+- Relay: native Antideploy Resend-compatible variables and sender, 20 recipients/day.
+- Supabase auth-email throttle: 20/hour; relay's stricter day cap still applies.
+- Confirmation is enabled. A confirmation link returns to a token-clearing page;
+  recovery link returns to the same-origin reset form. Used recovery links are denied.
 
-`brandguard-files` is private. User bearers, not a service key, authorize actual
-Storage requests. Keys are `user_id/random_uuid.ext`; owner upload and owner-or-trusted-
-reviewer reads were tested. Direct table REST reads, anonymous file access and other-
-creator reads were denied. No client overwrite/delete grant is provided.
+Do not add SMTP credentials or shadow the native `RESEND_*`/`EMAIL_FROM` variables:
+the signed hook replaces SMTP for this application. No Resend account or email-domain
+DNS changes are required by this chosen relay. Email-address-change double
+confirmation is not an implemented app feature; unsupported hook actions fail closed.
+The five test sends were all provider-reported delivered; human inbox opening is not claimed.
 
-## 4. Permanent hosting and real email — still required
+## Operations still separate
 
-Supabase hosts PostgreSQL/Auth/Storage, **not this FastAPI Python server**. Deploy the
-backend on a controlled Python/container host with TLS and secrets. Include the public
-CA file, set `CORS_ORIGINS` for your frontend and use the reachable HTTPS API in Flutter.
-Do not expose seeded local demo mode publicly. Configure request limits, operational
-monitoring and backups without logging tokens, credentials or document content.
-
-After obtaining the permanent API domain:
-
-```dotenv
-AUTH_REDIRECT_URL=https://YOUR_PERMANENT_API_DOMAIN/auth/reset
-CORS_ORIGINS=https://YOUR_FRONTEND_DOMAIN
-```
-
-Set Supabase Authentication → URL Configuration:
-- Site URL: an actual controlled frontend/confirmation page.
-- Redirect URLs: the exact `AUTH_REDIRECT_URL` above.
-
-Current remote Site URL is still localhost:3000 and its allowlist is empty; these
-were not replaced with a fabricated or temporary production URL. Real confirmation
-and recovery emails have **not** been sent/validated. Configure suitable SMTP/delivery
-and test a real recipient, confirmation link, recovery link, expiry and reuse.
-
-The supplied `/auth/reset` form implements Supabase's default implicit recovery
-flow, accepting the access token from the URL fragment, removing it from the address
-bar and holding it only in memory. It submits to `PUT /api/v1/auth/password`.
-Custom PKCE/code/token_hash templates require an additional exchange handler and
-are not claimed implemented. Authenticated password update itself passed live tests.
-
-Logout through FastAPI persists a token/session denylist, including older JWTs in
-the same session, and revokes the provider refresh token. A previously issued JWT
-may still work directly with Supabase until expiry outside this backend. Offline
-logout cannot guarantee remote revocation; do not promise otherwise.
-
-## 5. Maintenance and validation
-
-`validation/cloud/` contains sanitized evidence: 22 direct component checks,
-55 actual application workflow checks including an API restart, TLS verification
-and final temporary-data cleanup. Test users were admin-confirmed; that does not
-prove real signup email delivery. AI requests remain disabled without provider access.
-
-Local automated tests are isolated from the completed `.env`; run `python -m pytest -q`
-from `backend/`. **Do not run seeded `smoke_test.py` against this live project.**
-Back up database records and private Storage objects separately. The local backup/
-restore round-trip was tested; a live cloud recovery drill is still pending. Backups
-contain sensitive user/session data and must be protected.
-
-References:
-- https://supabase.com/docs/guides/platform/ssl-enforcement
-- https://supabase.com/docs/guides/auth/users
-- https://supabase.com/docs/guides/auth/passwords
-- https://supabase.com/docs/guides/auth/signout
-- https://supabase.com/docs/guides/storage/security/access-control
+Retain backups of PostgreSQL and private objects, and test a cloud restore before
+claiming disaster recovery. Current repository serialization favors consistency over
+throughput; load/tenancy/background jobs are not newly implemented. In-app decision
+notifications are not push/transactional product emails. AI is separately disabled
+until the owner's Antideploy wallet is funded; see [AI_SETUP.md](AI_SETUP.md).

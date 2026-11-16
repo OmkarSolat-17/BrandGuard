@@ -1,9 +1,19 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../auth/session.dart';
+import 'api_config.dart';
+
+/// A short safe message for the UI, not a socket/URL/stack-trace dump.
+class ApiException implements Exception {
+  const ApiException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
 
 class BrandGuardApiService {
   static http.Client _client = http.Client();
@@ -15,16 +25,31 @@ class BrandGuardApiService {
     _refreshing = null;
   }
 
-  static String get baseUrl {
-    const configured = String.fromEnvironment('API_BASE');
-    if (configured.trim().isNotEmpty) {
-      return configured.trim().replaceFirst(RegExp(r'/+$'), '');
+  static String get baseUrl => ApiConfig.resolveBaseUrl(
+    configuredBase: const String.fromEnvironment('API_BASE'),
+    isWeb: kIsWeb,
+    webOrigin: kIsWeb ? Uri.base.origin : null,
+  );
+
+  static Future<http.Response> _send(
+    http.BaseRequest request, {
+    Duration timeout = const Duration(seconds: 45),
+  }) async {
+    try {
+      // Bound both connection setup AND reading the response body.
+      return await (() async {
+        final response = await _client.send(request);
+        return http.Response.fromStream(response);
+      })().timeout(timeout);
+    } on TimeoutException {
+      throw const ApiException(
+        'Connection timed out. Check your internet, wait a moment and try again.',
+      );
+    } on http.ClientException {
+      throw const ApiException(
+        'Cannot reach the BrandGuard server. Check your internet connection and try again.',
+      );
     }
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:8000';
-    }
-    if (kIsWeb) return Uri.base.origin;
-    return 'http://127.0.0.1:8000';
   }
 
   static Map<String, String> get _headers => {
@@ -40,11 +65,15 @@ class BrandGuardApiService {
           ? <String, dynamic>{}
           : jsonDecode(response.body);
     } on FormatException {
-      throw Exception(
-        'Backend returned non-JSON data (HTTP ${response.statusCode}). Check API_BASE and /health.',
+      throw ApiException(
+        'The server returned an unexpected non-JSON response (HTTP ${response.statusCode}). Please try again.',
       );
     }
-    if (decoded is! Map) throw Exception('Invalid backend response.');
+    if (decoded is! Map) {
+      throw const ApiException(
+        'The server returned an invalid response. Please try again.',
+      );
+    }
     final data = Map<String, dynamic>.from(decoded);
     if (response.statusCode >= 200 && response.statusCode < 300) return data;
     final detail =
@@ -54,7 +83,7 @@ class BrandGuardApiService {
     final message = detail is List
         ? detail.map((e) => e is Map ? e['msg'] : e).join('; ')
         : detail.toString();
-    throw Exception(message);
+    throw ApiException(message);
   }
 
   static Future<Map<String, dynamic>> request(
@@ -65,7 +94,7 @@ class BrandGuardApiService {
     bool retry = true,
   }) async {
     if (authenticated && session.accessToken == null) {
-      throw Exception('Please sign in first.');
+      throw const ApiException('Please sign in first.');
     }
     final requestToken = session.accessToken;
     final requestUser = session.userId;
@@ -74,15 +103,15 @@ class BrandGuardApiService {
       authenticated ? _headers : {'Content-Type': 'application/json'},
     );
     if (body != null) req.body = jsonEncode(body);
-    final response = await http.Response.fromStream(
-      await _client.send(req).timeout(const Duration(seconds: 45)),
-    );
+    final response = await _send(req);
     if (response.statusCode == 401 &&
         authenticated &&
         retry &&
         session.refreshToken != null) {
       if (session.userId != requestUser) {
-        throw Exception('Session changed. Retry from your current account.');
+        throw const ApiException(
+          'Session changed. Retry from your current account.',
+        );
       }
       if (session.accessToken == requestToken) {
         final refreshing = _refreshing ??= _refreshSession();
@@ -105,7 +134,9 @@ class BrandGuardApiService {
 
   static void _acceptSession(Map<String, dynamic> data) {
     if (data['access_token'] is! String || data['user'] is! Map) {
-      throw Exception('The server did not create a session.');
+      throw const ApiException(
+        'The server did not create a session. Please try signing in again.',
+      );
     }
     session.signIn(
       User.fromJson(Map<String, dynamic>.from(data['user'])),
@@ -136,7 +167,8 @@ class BrandGuardApiService {
       authenticated: false,
       body: {'name': name.trim(), 'email': email.trim(), 'password': password},
     );
-    if (data['access_token'] != null) _acceptSession(data);
+    if (data['requires_confirmation'] == true) return data;
+    _acceptSession(data);
     return data;
   }
 
@@ -150,7 +182,7 @@ class BrandGuardApiService {
         body: {'refresh_token': refresh},
       );
       if (session.refreshToken != refresh) {
-        throw Exception('Session changed during refresh.');
+        throw const ApiException('Session changed during refresh.');
       }
       _acceptSession(data);
     } catch (_) {
@@ -169,7 +201,7 @@ class BrandGuardApiService {
         Uri.parse('$baseUrl/api/v1/auth/logout'),
       );
       req.headers['Authorization'] = 'Bearer $token';
-      await _client.send(req).timeout(const Duration(seconds: 4));
+      await _send(req, timeout: const Duration(seconds: 4));
     } catch (_) {
       /* Local logout succeeds even offline; remote revocation then cannot be guaranteed. */
     }
@@ -245,7 +277,9 @@ class BrandGuardApiService {
     bool asFact = false,
     String brandName = 'Acme',
   }) async {
-    if (session.accessToken == null) throw Exception('Please sign in first.');
+    if (session.accessToken == null) {
+      throw const ApiException('Please sign in first.');
+    }
     final req = http.MultipartRequest(
       'POST',
       Uri.parse(
@@ -254,10 +288,6 @@ class BrandGuardApiService {
     );
     req.headers['Authorization'] = 'Bearer ${session.accessToken}';
     req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: name));
-    return _decode(
-      await http.Response.fromStream(
-        await _client.send(req).timeout(const Duration(seconds: 45)),
-      ),
-    );
+    return _decode(await _send(req));
   }
 }

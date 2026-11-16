@@ -13,10 +13,12 @@ class SignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<SignInScreen> {
-  final _email = TextEditingController(text: DemoAuth.creator.email);
-  final _password = TextEditingController(text: DemoAuth.password);
-  bool _busy = false, _remember = false, _demo = true;
-  String? _error;
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  bool _busy = false, _remember = false, _demo = false;
+  bool _checkingConnection = true;
+  String? _error, _notice, _connectionError, _authProvider;
+
   @override
   void initState() {
     super.initState();
@@ -27,27 +29,70 @@ class _SignInScreenState extends State<SignInScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (!mounted) return;
-      _remember = prefs.getBool(DemoAuth.rememberEmailKey) ?? false;
-      if (_remember) {
-        _email.text =
-            prefs.getString(DemoAuth.rememberedEmailKey) ?? _email.text;
-      }
+      setState(() {
+        _remember = prefs.getBool(DemoAuth.rememberEmailKey) ?? false;
+        if (_remember && _email.text.isEmpty) {
+          _email.text = prefs.getString(DemoAuth.rememberedEmailKey) ?? '';
+        }
+      });
+    } catch (_) {
+      // A preferences failure must not prevent a real server connection/login.
+    }
+    if (mounted) await _checkConnection();
+  }
+
+  Future<void> _checkConnection() async {
+    setState(() {
+      _checkingConnection = true;
+      _connectionError = null;
+    });
+    try {
       final status = await BrandGuardApiService.request(
         'GET',
         '/api/v1/auth/config',
         authenticated: false,
       );
+      final provider = status['auth_provider'];
+      if (provider != 'local' && provider != 'supabase') {
+        throw const ApiException(
+          'Could not verify the server configuration. Try again.',
+        );
+      }
       if (!mounted) return;
       setState(() {
-        _demo = status['demo_accounts_enabled'] == true;
-        if (!_demo && DemoAuth.findAccount(_email.text) != null) {
+        _authProvider = provider as String;
+        // Fail closed: public local-demo values appear only after an explicit
+        // successful local-server response, never on a timeout or cloud server.
+        _demo = provider == 'local' && status['demo_accounts_enabled'] == true;
+        _checkingConnection = false;
+        if (!_demo && !_busy && DemoAuth.findAccount(_email.text) != null) {
           _email.clear();
           _password.clear();
         }
       });
-    } catch (_) {
-      if (mounted) setState(() {});
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _demo = false;
+        _checkingConnection = false;
+        _connectionError = error.toString();
+      });
     }
+  }
+
+  String get _serverLabel {
+    try {
+      return Uri.parse(BrandGuardApiService.baseUrl).authority;
+    } catch (_) {
+      return 'Check API_BASE configuration';
+    }
+  }
+
+  String? _emailError(String value) {
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value.trim())) {
+      return 'Enter a valid email address.';
+    }
+    return null;
   }
 
   @override
@@ -62,6 +107,7 @@ class _SignInScreenState extends State<SignInScreen> {
       _email.text = account.email;
       _password.text = DemoAuth.password;
       _error = null;
+      _notice = null;
     });
   }
 
@@ -82,7 +128,7 @@ class _SignInScreenState extends State<SignInScreen> {
         user.role == 'reviewer' ? 'Reviewer' : 'Creator',
       );
     } catch (_) {
-      /* Preferences are not authentication storage. */
+      // Preferences are not authentication storage.
     }
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
@@ -91,21 +137,31 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   Future<void> _login() async {
+    final invalid =
+        _emailError(_email.text) ??
+        (_password.text.isEmpty ? 'Enter your password.' : null);
+    if (invalid != null) {
+      setState(() {
+        _error = invalid;
+        _notice = null;
+      });
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
+      _notice = null;
     });
     try {
       await BrandGuardApiService.login(_email.text, _password.text);
       if (!mounted) return;
       await _openDashboard();
     } catch (error) {
-      if (mounted) {
-        setState(() {
-          _error = error.toString();
-          _busy = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _error = error.toString();
+        _busy = false;
+      });
     }
   }
 
@@ -114,9 +170,10 @@ class _SignInScreenState extends State<SignInScreen> {
     final email = TextEditingController(text: _email.text);
     final password = TextEditingController();
     String? error;
-    bool busy = false;
+    bool busy = false, confirmationRequired = false;
     final route = DialogRoute<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (dialog) => StatefulBuilder(
         builder: (dialog, update) => AlertDialog(
           title: Text(recover ? 'Reset password' : 'Create account'),
@@ -129,11 +186,14 @@ class _SignInScreenState extends State<SignInScreen> {
                   if (!recover)
                     TextField(
                       controller: name,
+                      textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(labelText: 'Name'),
                     ),
                   TextField(
                     controller: email,
                     keyboardType: TextInputType.emailAddress,
+                    autocorrect: false,
+                    textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(labelText: 'Email'),
                   ),
                   if (!recover)
@@ -165,6 +225,20 @@ class _SignInScreenState extends State<SignInScreen> {
               onPressed: busy
                   ? null
                   : () async {
+                      final invalid =
+                          _emailError(email.text) ??
+                          (!recover && name.text.trim().length < 2
+                              ? 'Enter your name (at least 2 characters).'
+                              : null) ??
+                          (!recover &&
+                                  (password.text.length < 8 ||
+                                      password.text.length > 128)
+                              ? 'Use a password with 8 to 128 characters.'
+                              : null);
+                      if (invalid != null) {
+                        update(() => error = invalid);
+                        return;
+                      }
                       update(() {
                         busy = true;
                         error = null;
@@ -178,23 +252,16 @@ class _SignInScreenState extends State<SignInScreen> {
                             email.text,
                             password.text,
                           );
-                          if (data['requires_confirmation'] == true) {
-                            if (!dialog.mounted) return;
-                            update(() {
-                              error = data['message'].toString();
-                              busy = false;
-                            });
-                            return;
-                          }
+                          confirmationRequired =
+                              data['requires_confirmation'] == true;
                         }
                         if (dialog.mounted) Navigator.pop(dialog, true);
                       } catch (e) {
-                        if (dialog.mounted) {
-                          update(() {
-                            error = e.toString();
-                            busy = false;
-                          });
-                        }
+                        if (!dialog.mounted) return;
+                        update(() {
+                          error = e.toString();
+                          busy = false;
+                        });
                       }
                     },
               child: Text(
@@ -211,20 +278,22 @@ class _SignInScreenState extends State<SignInScreen> {
     );
     final result = await Navigator.of(context).push(route);
     await route.completed;
-    if (mounted && result == true && !recover) _email.text = email.text;
+    final submittedEmail = email.text.trim();
     name.dispose();
     email.dispose();
     password.dispose();
     if (!mounted || result != true) return;
-    if (recover) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'If the account exists, check your email for provider instructions.',
-          ),
-        ),
-      );
+    if (recover || confirmationRequired) {
+      setState(() {
+        _error = null;
+        _email.text = submittedEmail;
+        _password.clear();
+        _notice = recover
+            ? 'If this account exists, check your inbox or spam folder for password reset instructions.'
+            : 'Account created. Check your inbox or spam folder, confirm your email, then sign in.';
+      });
     } else {
+      _email.text = submittedEmail;
       await _openDashboard();
     }
   }
@@ -253,14 +322,53 @@ class _SignInScreenState extends State<SignInScreen> {
                       ?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Sign in through the BrandGuard server. Keep your backend running.',
+                const Text('Sign in with your BrandGuard email and password.'),
+                const SizedBox(height: 8),
+                Text(
+                  'Server: $_serverLabel',
+                  key: const ValueKey('server-address'),
+                  style: const TextStyle(fontSize: 12),
                 ),
+                if (_checkingConnection)
+                  const Text(
+                    'Checking server connection...',
+                    style: TextStyle(fontSize: 12),
+                  )
+                else if (_connectionError != null)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _connectionError!,
+                        key: const ValueKey('server-connection-error'),
+                        style: const TextStyle(fontSize: 12, color: Colors.red),
+                      ),
+                      TextButton(
+                        key: const ValueKey('retry-connection'),
+                        onPressed: _checkConnection,
+                        child: const Text('Retry connection'),
+                      ),
+                    ],
+                  )
+                else
+                  Text(
+                    _authProvider == 'local'
+                        ? 'Connected to local server'
+                        : 'Connected to live service',
+                    key: const ValueKey('server-connected'),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF006B5E),
+                    ),
+                  ),
                 const SizedBox(height: 24),
                 TextFormField(
                   key: const ValueKey('demo-email'),
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  textInputAction: TextInputAction.next,
+                  autofillHints: const [AutofillHints.username],
                   decoration: const InputDecoration(
                     labelText: 'Email',
                     border: OutlineInputBorder(),
@@ -271,6 +379,7 @@ class _SignInScreenState extends State<SignInScreen> {
                   key: const ValueKey('demo-password'),
                   controller: _password,
                   obscureText: true,
+                  autofillHints: const [AutofillHints.password],
                   onFieldSubmitted: (_) {
                     if (!_busy) _login();
                   },
@@ -295,6 +404,15 @@ class _SignInScreenState extends State<SignInScreen> {
                       _error!,
                       key: const ValueKey('demo-login-error'),
                       style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                if (_notice != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      _notice!,
+                      key: const ValueKey('auth-notice'),
+                      style: const TextStyle(color: Color(0xFF006B5E)),
                     ),
                   ),
                 FilledButton(
@@ -355,7 +473,7 @@ class _SignInScreenState extends State<SignInScreen> {
                           ],
                         ),
                         const Text(
-                          'These public demo accounts use real server authentication. Disable demo seeding before exposing a deployment.',
+                          'Local server only. These public demo accounts are not live cloud accounts.',
                         ),
                       ],
                     ),

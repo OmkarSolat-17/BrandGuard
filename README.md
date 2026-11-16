@@ -6,7 +6,11 @@
 
 BrandGuard creators aur reviewers ko ek shared workflow deta hai: content prepare karein, brand rules ke against check karein, evidence inspect karein aur exact content version par human approval record karein.
 
+<<<<<<< HEAD
 **[Open Live App](https://brandguard-app.antideploy.app)** · **[Quick User Guide](START_HERE.md)** · **[Deployment Guide](DEPLOYMENT.md)** · **[API Documentation](https://brandguard-app.antideploy.app/docs)**
+=======
+**[Mobile Login Fix / Rebuild Guide](LOGIN_FIX.md)** · **[Open Live App](https://brandguard-app.antideploy.app)** · **[Quick User Guide](START_HERE.md)** · **[Deployment Guide](DEPLOYMENT.md)** · **[API Documentation](https://brandguard-app.antideploy.app/docs)**
+>>>>>>> 1127c4e (Complte task)
 
 > **Current status:** Public hosting, Supabase integration, signup confirmation aur password recovery verified hain. Paid AI integration prepared hai, lekin wallet funding aur live quality verification tak **AI disabled** hai. Rule-based checks aur human review independently work karte hain.
 
@@ -60,7 +64,11 @@ BrandGuard creators aur reviewers ko ek shared workflow deta hai: content prepar
 | Hosting | Antideploy, custom non-root Docker container |
 | Tests | Pytest, Flutter unit/widget tests, separate live API/browser checks |
 
+<<<<<<< HEAD
 **Tested toolchain:** Python **3.13.18**, Flutter **3.50.0**, Dart **3.14.0**. Local launcher requires Python **3.11+**; mobile source requires Dart **`^3.14.0`**. App/API version: **2.0.0**.
+=======
+**Tested toolchain:** Python **3.13.18**, Flutter **3.50.0**, Dart **3.14.0**. Local launcher requires Python **3.11+**; mobile source requires Dart **`^3.14.0`**. Mobile version: **2.0.1+3**; unchanged backend API version: **2.0.0**.
+>>>>>>> 1127c4e (Complte task)
 
 ## Architecture
 
@@ -142,11 +150,25 @@ Flutter SDK aur target emulator/device ready hone ke baad:
 
 ```sh
 cd mobile
+flutter clean
 flutter pub get --enforce-lockfile
 flutter run --dart-define=API_BASE=https://brandguard-app.antideploy.app
 ```
 
+<<<<<<< HEAD
 Is option mein apna local Python server start karna zaroori nahi. Actual native release signing/device certification is command se claim nahi hoti.
+=======
+**Is release mein native default live HTTPS hai:** `https://brandguard-app.antideploy.app`.
+Windows par root ka **`RUN_MOBILE.bat`**, Mac/Linux par **`./RUN_MOBILE.sh`** bhi use
+kar sakte hain. VS Code ke liye root mein hosted launch configuration included hai.
+Purane IDE arguments mein `API_BASE=http://10.0.2.2:8000` ho toh remove karein;
+explicit override always wins. Old installed app ko fully stop/rebuild karein,
+sirf hot reload nahi. Details: [LOGIN_FIX.md](LOGIN_FIX.md).
+
+Is option mein apna local Python server start karna zaroori nahi. Actual native
+release signing/device certification is command se claim nahi hoti. ZIP source
+release hai; APK/IPA included nahi hai.
+>>>>>>> 1127c4e (Complte task)
 
 ### 3. Run an isolated local demo
 
@@ -183,7 +205,11 @@ To run just the local API:
 python start_backend.py --host 127.0.0.1
 ```
 
+<<<<<<< HEAD
 Native Flutter development ke liye API address choose karein:
+=======
+Only local native development ke liye explicit `--dart-define=API_BASE=...` pass karein. Neeche wale addresses ab automatic defaults nahi hain:
+>>>>>>> 1127c4e (Complte task)
 
 | Target | Local API address |
 |---|---|
@@ -307,11 +333,35 @@ Fixtures temporary local stores use karte hain aur real cloud settings se isolat
 cd mobile
 flutter pub get --enforce-lockfile
 flutter analyze
+<<<<<<< HEAD
 flutter test
 ```
 
 ### Latest completed deployment verification
 
+=======
+flutter test --concurrency=1
+```
+
+### Current mobile login-fix release
+
+| Check | Result |
+|---|---|
+| Backend regression suite rerun | **113 passed** |
+| Flutter unit/widget regression suite | **75 passed**, including 26 new connection/UI checks |
+| Flutter analyzer | **No issues found** |
+| Native Dart → live HTTPS | **13 passed**: both trusted roles, identity/dashboard, logout/token denial, safe signup reachability |
+| Updated browser bundle | Release build successful; both rendered role logins and actual cloud dashboards verified through a test-only API bridge |
+
+Current evidence: [`validation/login-fix/`](validation/login-fix/).
+Native HTTPS verification used the Dart VM and this source's endpoint resolver, not
+an Android emulator/device build. Invalid-role signup was rejected with 422 without
+creating users or sending extra emails. Existing cloud database/accounts/roles and
+production deployment were not replaced. Physical-device/APK testing is not claimed.
+
+### Previous completed deployment verification
+
+>>>>>>> 1127c4e (Complte task)
 | Check | Recorded result |
 |---|---|
 | Backend regression/security/provider contracts | **113 passed** |
@@ -325,7 +375,11 @@ flutter test
 
 Detailed evidence: [Validation report](validation/RESULTS.md) and [`validation/antideploy/`](validation/antideploy/).
 
+<<<<<<< HEAD
 Counts recorded deployment checks ko refer karte hain; documentation edit ek new runtime test run nahi hai. Some unit/provider tests mocked hain; separate live API/browser checks ko unse mix nahi kiya gaya. Delivery reports human mailbox opening prove nahi karte, aur platform scans independent penetration-test certification nahi hain.
+=======
+Is second table ke counts earlier deployed release ke historical checks hain; email/security/workflow suites ko is mobile fix ke liye dobara run nahi kiya gaya. Some unit/provider tests mocked hain; separate live API/browser checks ko unse mix nahi kiya gaya. Delivery reports human mailbox opening prove nahi karte, aur platform scans independent penetration-test certification nahi hain.
+>>>>>>> 1127c4e (Complte task)
 
 ## Deployment
 
@@ -347,7 +401,22 @@ Dockerfile
 - Secrets encrypted host variables/private files mein rehte hain, source upload mein nahi.
 - Runtime/env changes ke baad appropriate upload/redeploy required hai; README-only edits ke liye unnecessary redeploy nahi.
 
+<<<<<<< HEAD
 `browser_preview/` prebuilt artifact hai. Dart source change hone par web bundle rebuild/update karna hoga; Antideploy upload limits aur required CanvasKit assets verify karke deploy karein.
+=======
+`browser_preview/` prebuilt artifact hai. Dart source change hone par web bundle rebuild/update karna hoga:
+
+```sh
+cd mobile
+flutter build web --release --no-wasm-dry-run --no-web-resources-cdn
+```
+
+Fresh `mobile/build/web/` ko `browser_preview/` mein copy karein. Included custom
+bootstrap service worker register nahi karta, taaki stale login configuration cache
+na ho. Hosting upload ke liye unused skwasm/wimp/webparagraph, `.symbols` aur `.map`
+files prune kar sakte hain; **generic aur Chromium CanvasKit JS/WASM dono retain**
+karein. Antideploy upload limits verify karke hi redeploy karein.
+>>>>>>> 1127c4e (Complte task)
 
 **Deployment instructions:** [DEPLOYMENT.md](DEPLOYMENT.md) · [Antideploy agent guide](https://antideploy.com/agent.md).
 
@@ -385,6 +454,10 @@ Previously issued private evaluation accounts time-limited hain: app/private Sto
 | [Live Supabase status](docs/LIVE_SUPABASE_STATUS.md) | Connected project and current verified state |
 | [AI setup](docs/AI_SETUP.md) | Funding/activation prerequisites, grounding and limitations |
 | [Project guide](docs/PROJECT_GUIDE.md) | Technical reference and administration |
+<<<<<<< HEAD
+=======
+| [Mobile login fix](LOGIN_FIX.md) | Hosted default, rebuild steps, safe local overrides and limits |
+>>>>>>> 1127c4e (Complte task)
 | [Validation results](validation/RESULTS.md) | Actual checks, evidence and untested areas |
 
 Earlier ready-demo ZIP aur previous source releases preserved hain. Local/demo distribution aur current hosted deployment ke private environments interchangeable nahi hain.
@@ -395,6 +468,7 @@ Project license **not finalized yet**. [`LICENSE`](LICENSE) currently selection 
 
 ---
 
+<<<<<<< HEAD
 ## Current flow
 
 ```mermaid
@@ -417,4 +491,6 @@ flowchart TD
   A --> F[Findings & Evidence UI]
 ```
 
+=======
+>>>>>>> 1127c4e (Complte task)
 **BrandGuard — clear checks, traceable evidence, accountable human decisions.**

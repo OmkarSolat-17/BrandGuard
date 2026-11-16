@@ -10,7 +10,23 @@ from pathlib import Path
 import socket
 import subprocess
 import sys
+import threading
+import time
+from urllib.request import urlopen
 import venv
+import webbrowser
+
+
+def _open_when_ready(url):
+    for _ in range(120):
+        try:
+            with urlopen(url + "/health", timeout=1) as response:
+                if response.status == 200:
+                    webbrowser.open(url)
+                    return
+        except OSError:
+            pass
+        time.sleep(0.5)
 
 
 def main():
@@ -20,6 +36,10 @@ def main():
     parser = argparse.ArgumentParser(description="Start the BrandGuard development API")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--web", action="store_true", help="Open bundled browser app")
+    parser.add_argument(
+        "--no-browser", action="store_true", help="Do not auto-open browser"
+    )
     parser.add_argument(
         "--setup-only",
         action="store_true",
@@ -61,12 +81,20 @@ def main():
         print(
             "Keep this terminal open. Ctrl+C stops the development API.\n", flush=True
         )
+        if args.web:
+            print(f"Browser app: http://127.0.0.1:{args.port}/", flush=True)
+            if not args.no_browser:
+                threading.Thread(
+                    target=_open_when_ready,
+                    args=(f"http://127.0.0.1:{args.port}",),
+                    daemon=True,
+                ).start()
         return subprocess.call(
             [
                 str(python),
                 "-m",
                 "uvicorn",
-                "app.main:app",
+                "app.web:app" if args.web else "app.main:app",
                 "--host",
                 args.host,
                 "--port",

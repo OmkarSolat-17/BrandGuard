@@ -22,7 +22,10 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     BrandGuardApiService.clientForTesting = MockClient((request) async {
       if (request.url.path == '/api/v1/auth/config') {
-        return http.Response('{"demo_accounts_enabled":true}', 200);
+        return http.Response(
+          '{"auth_provider":"local","demo_accounts_enabled":true}',
+          200,
+        );
       }
       if (request.url.path == '/api/v1/auth/login') {
         final body = jsonDecode(request.body);
@@ -108,6 +111,10 @@ void main() {
     (tester) async {
       await openLogin(tester);
       await tester.enterText(
+        find.byKey(const ValueKey('demo-email')),
+        DemoAuth.creator.email,
+      );
+      await tester.enterText(
         find.byKey(const ValueKey('demo-password')),
         'incorrect',
       );
@@ -126,8 +133,21 @@ void main() {
       (_) async => throw http.ClientException('Backend offline'),
     );
     await openLogin(tester);
+    expect(find.byKey(const ValueKey('demo-access-card')), findsNothing);
+    await tester.enterText(
+      find.byKey(const ValueKey('demo-email')),
+      DemoAuth.creator.email,
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('demo-password')),
+      DemoAuth.password,
+    );
     await submit(tester);
-    expect(find.textContaining('Backend offline'), findsOneWidget);
+    expect(
+      find.textContaining('Cannot reach the BrandGuard server'),
+      findsWidgets,
+    );
+    expect(find.textContaining('SocketException'), findsNothing);
     expect(session.currentUser, isNull);
   });
   testWidgets('remember email does not restore authentication', (tester) async {
@@ -144,12 +164,26 @@ void main() {
       DemoAuth.reviewer.email,
     );
     expect(session.currentUser, isNull);
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const ValueKey('demo-password')))
+          .controller
+          ?.text,
+      isEmpty,
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('demo-password')),
+      DemoAuth.password,
+    );
     await submit(tester);
     expect(session.role, 'reviewer');
   });
   testWidgets('cloud config hides public demo values', (tester) async {
     BrandGuardApiService.clientForTesting = MockClient(
-      (_) async => http.Response('{"demo_accounts_enabled":false}', 200),
+      (_) async => http.Response(
+        '{"auth_provider":"supabase","demo_accounts_enabled":false}',
+        200,
+      ),
     );
     await openLogin(tester);
     expect(find.byKey(const ValueKey('demo-access-card')), findsNothing);
@@ -201,9 +235,16 @@ void main() {
               '{"detail":"Email reset needs Supabase configuration"}',
               503,
             )
-          : http.Response('{"demo_accounts_enabled":true}', 200),
+          : http.Response(
+              '{"auth_provider":"local","demo_accounts_enabled":true}',
+              200,
+            ),
     );
     await openLogin(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey('demo-email')),
+      DemoAuth.creator.email,
+    );
     await tester.ensureVisible(find.text('Forgot password?'));
     await tester.tap(find.text('Forgot password?'));
     await settleTestUi(tester);

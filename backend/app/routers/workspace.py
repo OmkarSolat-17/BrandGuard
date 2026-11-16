@@ -235,8 +235,14 @@ def status(user=Depends(get_user)):
         "database": (
             "postgresql" if config.database_url().startswith("postgresql") else "sqlite"
         ),
-        "ai_configured": config.AI_PROVIDER == "openai" and bool(config.AI_API_KEY),
+        "ai_configured": config.AI_PROVIDER in {"openai", "openrouter"}
+        and bool(config.AI_API_KEY),
+        "ai_provider": config.AI_PROVIDER,
         "ai_model": config.AI_MODEL if config.AI_API_KEY else None,
+        "ai_access_live_verified": False,  # Configuration is not proof of wallet/provider access.
+        "auth_email_configured": bool(
+            config.SUPABASE_EMAIL_HOOK_SECRET and config.RESEND_API_KEY
+        ),
         "storage": "supabase" if config.AUTH_PROVIDER == "supabase" else "local",
         "ai_verification_limit": 12000,
         "document_extraction_limit": 100000,

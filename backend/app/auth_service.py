@@ -249,8 +249,17 @@ def supabase_profile(remote):
     uid = remote.get("id")
     if not uid:
         raise HTTPException(401, "Provider returned no user identity")
-    # Role is trusted ONLY from server-managed app_metadata, never user_metadata.
-    role = remote.get("app_metadata", {}).get("brandguard_role", "creator")
+    # Only trusted app_metadata may grant a role or extend evaluation access.
+    metadata = remote.get("app_metadata") or {}
+    if "brandguard_access_until" in metadata:
+        expires = metadata["brandguard_access_until"]
+        if (
+            type(expires) is not int
+            or not 0 <= expires <= 999999999999
+            or expires <= time.time()
+        ):
+            raise HTTPException(403, "Temporary demo access has expired")
+    role = metadata.get("brandguard_role", "creator")
     if role not in {"creator", "reviewer", "admin"}:
         role = "creator"
     user = {

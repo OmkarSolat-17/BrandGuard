@@ -251,3 +251,52 @@ def test_supabase_adapter_role_is_server_metadata_and_logout_denial(
     assert client.post("/api/v1/auth/logout", headers=h).status_code == 200
     assert client.get("/api/v1/auth/me", headers=h).status_code == 401
     assert any("logout?scope=local" in c[1] for c in calls)
+
+
+def test_openrouter_uses_private_routing_and_strict_evidence(client, monkeypatch):
+    enable_ai(monkeypatch)
+    monkeypatch.setattr(config, "AI_PROVIDER", "openrouter")
+    monkeypatch.setattr(config, "AI_MODEL", "openai/gpt-5.4-mini")
+    monkeypatch.setattr(config, "AI_BASE_URL", "https://openrouter.ai/api/v1")
+    calls = []
+
+    def post(url, **kwargs):
+        calls.append((url, kwargs))
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": json.dumps(result())},
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(verifier.httpx, "post", post)
+    output = verifier.run_ai_verification("Acme costs 49 dollars", brand_facts=[FACT])
+    assert output["status"] == "supported"
+    assert calls[0][0] == "https://openrouter.ai/api/v1/chat/completions"
+    body = calls[0][1]["json"]
+    assert body["provider"] == {"require_parameters": True, "data_collection": "deny"}
+    assert body["reasoning"] == {"effort": "low", "exclude": True}
+    assert body["response_format"]["json_schema"]["strict"] is True
+
+
+def test_openrouter_credit_or_provider_denial_abstains(client, monkeypatch):
+    enable_ai(monkeypatch)
+    monkeypatch.setattr(config, "AI_PROVIDER", "openrouter")
+
+    def post(url, **kwargs):
+        return httpx.Response(
+            403,
+            request=httpx.Request("POST", url),
+            json={"error": "Key limit exceeded"},
+        )
+
+    monkeypatch.setattr(verifier.httpx, "post", post)
+    output = verifier.run_ai_verification("Acme costs 49 dollars", brand_facts=[FACT])
+    assert output["status"] == "abstained"
+    assert output["findings"] == []

@@ -25,9 +25,27 @@ SUPABASE_STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "brandguard-
 SEED_DEMO_USERS = os.environ.get("SEED_DEMO_USERS", "true").lower() == "true"
 JWT_SECRET = os.environ.get("JWT_SECRET", "")
 AI_PROVIDER = os.environ.get("AI_PROVIDER", "disabled").lower()
-AI_API_KEY = os.environ.get("AI_API_KEY", "")
-AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-AI_MODEL = os.environ.get("AI_MODEL", "gpt-5.4-mini")
+AI_API_KEY = os.environ.get("AI_API_KEY", "") or (
+    os.environ.get("OPENROUTER_API_KEY", "") if AI_PROVIDER == "openrouter" else ""
+)
+AI_BASE_URL = os.environ.get(
+    "AI_BASE_URL",
+    (
+        "https://openrouter.ai/api/v1"
+        if AI_PROVIDER == "openrouter"
+        else "https://api.openai.com/v1"
+    ),
+).rstrip("/")
+AI_MODEL = os.environ.get(
+    "AI_MODEL", "openai/gpt-5.4-mini" if AI_PROVIDER == "openrouter" else "gpt-5.4-mini"
+)
+PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", os.environ.get("APP_URL", "")).rstrip(
+    "/"
+)
+SUPABASE_EMAIL_HOOK_SECRET = os.environ.get("SUPABASE_EMAIL_HOOK_SECRET", "")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+RESEND_API_URL = os.environ.get("RESEND_API_URL", "").rstrip("/")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "")
 CORS_ORIGINS = [
     s.strip() for s in os.environ.get("CORS_ORIGINS", "").split(",") if s.strip()
 ]

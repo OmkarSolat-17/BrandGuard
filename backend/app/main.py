@@ -7,8 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import initialize_data_store
 from app import config
+from app.http_security import CONTENT_SECURITY_POLICY, DOCUMENTATION_SECURITY_POLICY
 from app.routers.authentication import router as auth_router
 from app.routers.recovery import router as recovery_router
+from app.routers.email_delivery import router as email_router
 from app.routers.library import router as library_router
 from app.routers.workspace import router as workspace_router
 from app.routers.files import router as files_router
@@ -40,6 +42,7 @@ app.add_middleware(
 )
 app.include_router(auth_router)
 app.include_router(recovery_router)
+app.include_router(email_router)
 app.include_router(library_router)
 app.include_router(workspace_router)
 app.include_router(files_router)
@@ -67,6 +70,16 @@ async def health_check():
 async def private_response_headers(request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = (
+        DOCUMENTATION_SECURITY_POLICY
+        if request.url.path in {"/docs", "/docs/oauth2-redirect", "/redoc"}
+        else CONTENT_SECURITY_POLICY
+    )
+    if config.PUBLIC_APP_URL.startswith("https://"):
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
     return response

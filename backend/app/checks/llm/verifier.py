@@ -91,7 +91,7 @@ def run_ai_verification(content, brand_facts=None, brand_name="Acme"):
     facts = retrieve_facts(content, brand_name, facts=brand_facts)
     if not facts:
         return abstain("No relevant reviewer-verified source text is available.")
-    if config.AI_PROVIDER != "openai" or not config.AI_API_KEY:
+    if config.AI_PROVIDER not in {"openai", "openrouter"} or not config.AI_API_KEY:
         return abstain(
             "AI provider/key is not configured. Deterministic checks still ran."
         )
@@ -137,7 +137,14 @@ def run_ai_verification(content, brand_facts=None, brand_name="Acme"):
                 },
             ],
         }
-        if config.AI_MODEL.startswith("gpt-5"):
+        if config.AI_PROVIDER == "openrouter":
+            payload["provider"] = {
+                "require_parameters": True,
+                "data_collection": "deny",
+            }
+            if "/gpt-5" in config.AI_MODEL:
+                payload["reasoning"] = {"effort": "low", "exclude": True}
+        elif config.AI_MODEL.startswith("gpt-5"):
             payload["reasoning_effort"] = "low"
         response = httpx.post(
             config.AI_BASE_URL + "/chat/completions",
